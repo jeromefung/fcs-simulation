@@ -178,7 +178,7 @@ class IntensityTrace():
         coords = (np.random.rand(N * 3) - 0.5) * self.sim_params.L_box
         return coords.reshape((-1, 3))
         
-    def simulate_trace(self, P, c_fluor, kappa, e_photon):
+    def simulate_trace(self, P, c_fluor, kappa, e_photon, save_coords = False):
         '''
         Do the simulation.
 
@@ -193,29 +193,43 @@ class IntensityTrace():
             Includes geometric factors due to NA, losses, etc.
         e_photon (float)
             Single-photon energy in units consistent with P.
+        save_coords (Boolean)
+            If True, return fluorophore coordinates. Not recommended for 
+            long runs.
 
         Returns
         -------
-        pos : ndarray(n_particles, n_steps, 3)
         intensity : ndarray
         avg_countrate : float
+        pos : ndarray(n_particles, n_steps, 3)        
         '''
 
         # Initialize
         # simulation volume * concentration
         N_particles = int(np.rint(self.sim_params.L_box**3 * c_fluor))
-        pos = np.zeros((N_particles, self.sim_params.n_steps, 3))
         intensity = np.zeros(self.sim_params.n_steps)
 
-        pos[:, 0, :] = self.random_particle_distribution(N_particles)
-
+        if save_coords:
+            pos = np.zeros((N_particles, self.sim_params.n_steps, 3))
+            pos[:, 0, :] = self.random_particle_distribution(N_particles)
+        else:
+            pos = np.zeros((N_particles, 3))
+            pos = self.random_particle_distribution(N_particles)
+            
         # Loop over time steps
         for step in np.arange(0, self.sim_params.n_steps):
             # Loop over fluorophores
             for i in np.arange(N_particles):
+                # get coords
+                if save_coords:
+                    x, y = pos[i, step, 0:2]
+                    z = pos[i, step, 2]
+                else:
+                    x, y = pos[i, 0:2]
+                    z = pos[i, 2]
+                r = cylindrical_r(x, y)
+                
                 # calculate incident intensity
-                r = cylindrical_r(*pos[i, step, 0:2])
-                z = pos[i, step, 2]
                 I = self.optics.intensity_profile(r, z, P)
 
                 # absorbed photons
@@ -227,8 +241,7 @@ class IntensityTrace():
                 N_e = N_abs * self.fluorophore.q_f
 
                 # CEF
-                cef = CEF(pos[i, step, 0], pos[i, step, 1], pos[i, step, 2],
-                          self.optics.s0, self.emission_R0,
+                cef = CEF(x, y, z, self.optics.s0, self.emission_R0,
                           self.optics.obj_half_angle)
 
                 # avg detected photon #
@@ -239,13 +252,18 @@ class IntensityTrace():
                 intensity[step] = intensity[step] + random.poisson(N_d_avg)
 
                 # update position
-                try:
-                    pos[i, step + 1, :] = self.update_pos(pos[i, step, :])
-                except IndexError:
-                    pass
-            #print(step)
+                if save_coords:
+                    try:
+                        pos[i, step + 1, :] = self.update_pos(pos[i, step, :])
+                    except IndexError: # sloppy about last step
+                        pass
+                else:
+                    pos[i, :] = self.update_pos(pos[i, :])
 
         avg_countrate = intensity.sum() / (self.sim_params.n_steps *
                                            self.sim_params.dt)
 
-        return pos, intensity, avg_countrate
+        if save_coords:
+            return intensity, avg_countrate, pos
+        else:
+            return intensity, avg_countrate
