@@ -1,32 +1,7 @@
 import numpy as np
 import numpy.random as random
-from scipy.integrate import dblquad
 from collections import namedtuple
-
-def integrate_circle(func, R, args = None):
-    if args is None:
-        result, _ = dblquad(func, -R, R,
-                            lambda x: -np.sqrt(R**2 - x**2),
-                            lambda x: np.sqrt(R**2 - x**2))
-    else:
-        result, _ = dblquad(func, -R, R,
-                            lambda x: -np.sqrt(R**2 - x**2),
-                            lambda x: np.sqrt(R**2 - x**2), args = args)
-    return result
-
-def PSF_rad(z, R0, alpha):
-    return np.sqrt(R0**2 + z**2 * np.tan(alpha))
-
-def CEF(xprime, yprime, z, s0, R0, alpha):
-    def integrand(y, x):
-        R = PSF_rad(z, R0, alpha)
-        rminusrp = np.sqrt((x - xprime)**2 + (y - yprime)**2)
-        if rminusrp <= R:
-            return 1 / (np.pi * R**2)
-        else:
-            return 0
-
-    return integrate_circle(integrand, s0)
+from fast_cef import CEF 
 
 def cylindrical_r(x, y):
     return np.sqrt(x**2 + y**2)
@@ -259,7 +234,7 @@ class IntensityTrace():
                 # avg detected photon #
                 # See Wohland eq. 13
                 N_d_avg = kappa * N_e * cef * self.optics.q_d
-                print(N_e, cef, N_d_avg)
+                #print(N_e, cef, N_d_avg)
                 # calculate number of detected photons for this time step
                 intensity[step] = intensity[step] + random.poisson(N_d_avg)
 
@@ -268,7 +243,7 @@ class IntensityTrace():
                     pos[i, step + 1, :] = self.update_pos(pos[i, step, :])
                 except IndexError:
                     pass
-            print(step)
+            #print(step)
 
         avg_countrate = intensity.sum() / (self.sim_params.n_steps *
                                            self.sim_params.dt)
