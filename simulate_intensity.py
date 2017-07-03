@@ -3,9 +3,10 @@ import numpy.random as random
 from collections import namedtuple
 from fast_cef import CEF 
 
+vCEF = np.vectorize(CEF, excluded = ['s0', 'R0', 'alpha'])
+
 def cylindrical_r(x, y):
     return np.sqrt(x**2 + y**2)
-
 
 Fluorophore = namedtuple('Fluorophore', ['D', 'sigma_abs', 'q_f', 'wavelen_em'])
 '''
@@ -150,10 +151,11 @@ class IntensityTrace():
 
         Parameters
         ----------
-        coords : ndarray(3)
+        coords : ndarray
             x, y, z coordinates of current particle location
-        dr : ndarray(3), optional
+        dr : ndarray, optional
             If provided, the random step to give the particle
+            Probably more efficient to provide.
 
         Notes
         -----
@@ -164,7 +166,7 @@ class IntensityTrace():
         # variance sigma^2 = 2 D \delta t.
         if dr is None:
             stddev = np.sqrt(2. * self.fluorophore.D * self.sim_params.dt)
-            dr = random.randn(3) * stddev
+            dr = random.randn(*coords.shape) * stddev
 
         # box centered at 0, but math easier if centered at (L/2, L/2, L/2)
         # acceptable coordinates range from 0 to L
@@ -220,7 +222,6 @@ class IntensityTrace():
             pos = np.zeros((N_particles, self.sim_params.n_steps, 3))
             pos[:, 0, :] = self.random_particle_distribution(N_particles)
         else:
-            pos = np.zeros((N_particles, 3))
             pos = self.random_particle_distribution(N_particles)
             
         # Loop over time steps
@@ -228,52 +229,53 @@ class IntensityTrace():
             # calculate random steps
             stddev = np.sqrt(2. * self.fluorophore.D * self.sim_params.dt)
             dr = np.random.randn(3 * N_particles).reshape((-1, 3)) * stddev
-            
-            # Loop over fluorophores
-            for i in np.arange(N_particles):
-                # get coords
-                if save_coords:
-                    x, y = pos[i, step, 0:2]
-                    z = pos[i, step, 2]
-                else:
-                    x, y = pos[i, 0:2]
-                    z = pos[i, 2]
-                r = cylindrical_r(x, y)
-                
-                # calculate incident intensity
-                I = self.optics.intensity_profile(r, z, P)
 
-                # absorbed photons
-                # Wohland eq. 11
-                N_abs = I / e_photon * self.fluorophore.sigma_abs * \
+            if save_coords:
+                x = pos[:, step, 0]
+                y = pos[:, step, 1]
+                z = pos[:, step, 2]
+            else:
+                x = pos[:, 0]
+                y = pos[:, 1]
+                z = pos[:, 2]
+            r = cylindrical_r(x, y)
+
+            # intensity profile
+            I = self.optics.intensity_profile(r, z, P)
+
+            # absorbed photons
+            # Wohland eq. 11
+            N_abs = I / e_photon * self.fluorophore.sigma_abs * \
                         self.sim_params.dt
-                #print(N_abs)
-                # emitted photons, Wohland eq. 12
-                N_e = N_abs * self.fluorophore.q_f
 
-                # CEF
-                cef = CEF(x, y, z, self.optics.s0, self.emission_R0,
-                          self.optics.obj_half_angle)
+            # emitted photons, Wohland eq. 12
+            N_e = N_abs * self.fluorophore.q_f
 
-                # avg detected photon #
-                # See Wohland eq. 13
-                N_d_avg = kappa * N_e * cef * self.optics.q_d
-                
-                # calculate number of detected photons for this time step
-                # in edge cases N_d_avg might be numerically close to 0
-                # but negative -- take absolute value
-                intensity[step] = intensity[step] + random.poisson(abs(N_d_avg))
+            # vectorized CEF
+            cef = vCEF(x, y, z, self.optics.s0, self.emission_R0,
+                       self.optics.obj_half_angle)
 
-                # update position
-                if save_coords:
-                    try:
-                        pos[i, step + 1, :] = self.update_pos(pos[i, step, :],
-                                                              dr[step])
-                    except IndexError: # sloppy about last step
-                        pass
-                else:
-                    pos[i, :] = self.update_pos(pos[i, :], dr[step])
+            # avg detected photon #
+            # See Wohland eq. 13
+            N_d_avg = np.abs(kappa * N_e * cef * self.optics.q_d)
 
+            # calculate number of detected photons for this time step
+            # in edge cases N_d_avg might be numerically close to 0
+            # but negative -- take absolute value
+            counts_this_step = random.poisson(lam = N_d_avg,
+                                              size = N_particles).sum()
+            intensity[step] = intensity[step] + counts_this_step
+
+            # update position
+            if save_coords:
+                try:
+                    pos[:, step + 1, :] = self.update_pos(pos[:, step, :],
+                                                          dr)
+                except IndexError: # sloppy about last step
+                    pass
+            else:
+                pos = self.update_pos(pos, dr)
+       
             # provide a crude progress update
             if self.sim_params.n_steps > update_val:
                 if step % update_val == 0:
