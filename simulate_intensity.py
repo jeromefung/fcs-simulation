@@ -257,14 +257,14 @@ class IntensityTrace():
 
             # avg detected photon #
             # See Wohland eq. 13
-            N_d_avg = np.abs(kappa * N_e * cef * self.optics.q_d)
+            N_d_avg = kappa * N_e * cef * self.optics.q_d
 
             # calculate number of detected photons for this time step
             # in edge cases N_d_avg might be numerically close to 0
             # but negative -- take absolute value
-            counts_this_step = random.poisson(lam = N_d_avg,
+            counts_this_step = random.poisson(lam = np.abs(N_d_avg),
                                               size = N_particles).sum()
-            intensity[step] = intensity[step] + counts_this_step
+            intensity[step] = counts_this_step
 
             # update position
             if save_coords:
