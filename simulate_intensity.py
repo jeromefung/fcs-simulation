@@ -143,7 +143,7 @@ class IntensityTrace():
         '''
         return 0.61 * self.fluorophore.wavelen_em / (2. * self.optics.NA)
         
-    def update_pos(self, coords):
+    def update_pos(self, coords, dr = None):
         '''
         Update x, y, and z coordinates of a particle undergoing Brownian
         motion.
@@ -152,6 +152,8 @@ class IntensityTrace():
         ----------
         coords : ndarray(3)
             x, y, z coordinates of current particle location
+        dr : ndarray(3), optional
+            If provided, the random step to give the particle
 
         Notes
         -----
@@ -160,8 +162,9 @@ class IntensityTrace():
         '''
         # Delta x, y, and z each Gaussian random variables with mean 0 and
         # variance sigma^2 = 2 D \delta t.
-        stddev = np.sqrt(2. * self.fluorophore.D * self.sim_params.dt)
-        dr = random.randn(3) * stddev
+        if dr is None:
+            stddev = np.sqrt(2. * self.fluorophore.D * self.sim_params.dt)
+            dr = random.randn(3) * stddev
 
         # box centered at 0, but math easier if centered at (L/2, L/2, L/2)
         # acceptable coordinates range from 0 to L
@@ -222,6 +225,10 @@ class IntensityTrace():
             
         # Loop over time steps
         for step in np.arange(0, self.sim_params.n_steps):
+            # calculate random steps
+            stddev = np.sqrt(2. * self.fluorophore.D * self.sim_params.dt)
+            dr = np.random.randn(3 * N_particles).reshape((-1, 3)) * stddev
+            
             # Loop over fluorophores
             for i in np.arange(N_particles):
                 # get coords
@@ -260,11 +267,12 @@ class IntensityTrace():
                 # update position
                 if save_coords:
                     try:
-                        pos[i, step + 1, :] = self.update_pos(pos[i, step, :])
+                        pos[i, step + 1, :] = self.update_pos(pos[i, step, :],
+                                                              dr[step])
                     except IndexError: # sloppy about last step
                         pass
                 else:
-                    pos[i, :] = self.update_pos(pos[i, :])
+                    pos[i, :] = self.update_pos(pos[i, :], dr[step])
 
             # provide a crude progress update
             if self.sim_params.n_steps > update_val:
