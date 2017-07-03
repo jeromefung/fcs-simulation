@@ -268,11 +268,11 @@ class IntensityTrace():
                 if save_coords:
                     try:
                         pos[i, step + 1, :] = self.update_pos(pos[i, step, :],
-                                                              dr[step])
+                                                              dr[i])
                     except IndexError: # sloppy about last step
                         pass
                 else:
-                    pos[i, :] = self.update_pos(pos[i, :], dr[step])
+                    pos[i, :] = self.update_pos(pos[i, :], dr[i])
 
             # provide a crude progress update
             if self.sim_params.n_steps > update_val:
