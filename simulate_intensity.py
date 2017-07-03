@@ -178,7 +178,8 @@ class IntensityTrace():
         coords = (np.random.rand(N * 3) - 0.5) * self.sim_params.L_box
         return coords.reshape((-1, 3))
         
-    def simulate_trace(self, P, c_fluor, kappa, e_photon, save_coords = False):
+    def simulate_trace(self, P, c_fluor, kappa, e_photon, save_coords = False,
+                       update_val = 1e6):
         '''
         Do the simulation.
 
@@ -196,6 +197,9 @@ class IntensityTrace():
         save_coords (Boolean)
             If True, return fluorophore coordinates. Not recommended for 
             long runs.
+        update_val (numeric)
+            If n_steps > update_val, display an update every update_val 
+            timesteps
 
         Returns
         -------
@@ -247,9 +251,11 @@ class IntensityTrace():
                 # avg detected photon #
                 # See Wohland eq. 13
                 N_d_avg = kappa * N_e * cef * self.optics.q_d
-                #print(N_e, cef, N_d_avg)
+                
                 # calculate number of detected photons for this time step
-                intensity[step] = intensity[step] + random.poisson(N_d_avg)
+                # in edge cases N_d_avg might be numerically close to 0
+                # but negative -- take absolute value
+                intensity[step] = intensity[step] + random.poisson(abs(N_d_avg))
 
                 # update position
                 if save_coords:
@@ -260,6 +266,11 @@ class IntensityTrace():
                 else:
                     pos[i, :] = self.update_pos(pos[i, :])
 
+            # provide a crude progress update
+            if self.sim_params.n_steps > update_val:
+                if step % update_val == 0:
+                    print('Timestep: ', step)
+            
         avg_countrate = intensity.sum() / (self.sim_params.n_steps *
                                            self.sim_params.dt)
 
