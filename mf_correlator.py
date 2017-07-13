@@ -95,16 +95,18 @@ class MultiTauCorrelator():
         self.lc_indices = np.arange(self.N_stages)
         # linear correlator gate times in units of min_gate_time
         self.lc_gates = self.binning_ratio**np.arange(N_stages)
+        self.clockstarts = clockstarts(self.N_channels_per_stage, self.N_stages,
+                                       self.binning_ratio)
         
         # create list of linear correlators
-        correlators = []
+        self.correlators = []
         # first correlator: source is data
-        correlators.append(LinearCorrelator(self.N_channels_per_stage,
-                                            self.data_source, 1))
+        self.correlators.append(LinearCorrelator(self.N_channels_per_stage,
+                                                 self.data_source, 1))
         # use factory to set up subsequent correlators
         for i in np.arange(self.N_stages - 1) + 1:
             # source is the previous correlator added
-            correlators.append(self.__initialize_cascaded_lc__(correlators[-1]))
+            self.correlators.append(self.__initialize_cascaded_lc__(self.correlators[-1]))
     
 
     def __initialize_cascaded_lc__(self, source):
@@ -116,10 +118,14 @@ class MultiTauCorrelator():
 
             
     def update(self):
-        # loop over each stage
-        for lc_index in self.lc_indices:
-            pass
-        
+        # loop over each linear stage
+        for correlator, gate, clockstart in zip(self.correlators,
+                                                self.lc_gates,
+                                                self.clockstarts):
+            if self.master_ctr >= clockstart and \
+               (self.master_ctr - clockstart) % gate == 0:
+                correlator.update()
+
         # update ticks
         self.master_ctr += 1
                             
@@ -128,7 +134,25 @@ class MultiTauCorrelator():
         '''
         Merge linear correlators
         '''
-        pass
+        output_correlogram = np.array([]) # list of arrays
+        output_times = np.array([])
+        for idx, correlator in zip(np.arange(len(self.correlators)),
+                                   self.correlators):
+            output = correlator.finalize()
+            times = np.arange(self.N_channels_per_stage) * \
+                    self.binning_ratio**idx
+            if idx == 0: # keep all points in first correlator
+                output_correlogram = np.append(output_correlogram, output)
+                output_times = np.append(output_times, times)
+            else: # throw out first 1/binning points
+                start_idx = int(self.N_channels_per_stage /
+                                self.binning_ratio) 
+                output_correlogram = np.append(output_correlogram,
+                                               output[start_idx:])
+                output_times= np.append(output_times, times[start_idx:])
+
+        return output_times * self.min_gate_time, output_correlogram
+
     
     
 class DataStream(np.ndarray):
