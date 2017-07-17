@@ -84,7 +84,7 @@ class Optics():
     @property
     def incident_w0(self):
         '''
-        Calculate diffraction-limited incident laser minimum spot size
+        Calculate diffraction-limited incident laser minimum spot radius
         '''
         return 1.22 * self.wavelen / (2. * self.NA)
 
@@ -142,7 +142,7 @@ class IntensityTrace():
         Calculate minimum emission spot radius.
         Assume diffraction-limited performance and use Rayleigh criterion.
         '''
-        return 0.61 * self.fluorophore.wavelen_em / (2. * self.optics.NA)
+        return 0.61 * self.fluorophore.wavelen_em / self.optics.NA
         
     def update_pos(self, coords, dr = None):
         '''
