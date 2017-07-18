@@ -9,7 +9,6 @@ Use symmetric normalization scheme of Schatzel.
 '''
 
 import numpy as np
-from collections import deque
 
 class LinearCorrelator():
     '''
@@ -33,33 +32,33 @@ class LinearCorrelator():
         self.delayed_monitor = np.zeros(self.n_elements)
         self.channel_indices = np.arange(self.n_elements)
 
-        # shift register: implement as deque
-        self.register = deque(np.zeros(self.n_elements))
+        # shift register: implement as ndarray and use array methods
+        self.register = np.zeros(self.n_elements)
 
 
     def update(self):
         # get newest element
         new_elt = self.source.push(self.prev_binning_ratio)
-        # remove oldest element
-        self.register.pop()
-        # left append newest element
-        self.register.appendleft(new_elt)
+        # remove last element in register
+        self.register[1:] = self.register[:-1]
+        # write newest element in position 0
+        self.register[0] = new_elt
 
         # update delayed monitor -- copy what is currently in register
-        self.delayed_monitor += np.array(self.register)
+        self.delayed_monitor += self.register
 
         # update direct monitor for each channel
         # add newest element if initialized
         self.direct_monitor[self.channel_indices <= self.counter] += new_elt
 
         # update accumulator
-        self.accumulator += new_elt * np.array(self.register)
+        self.accumulator += new_elt * self.register
 
         # increment counter
         self.counter += 1
 
     def push(self, n_elts = 1):
-        return (np.array(self.register)[-n_elts:]).sum()
+        return (self.register[-n_elts:]).sum()
 
     def finalize(self):
         # number of elements in each channel
